@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { changeNumberOfBalls, removeAll } from "../scene";
   import type { EditMode, SelectMode } from "../types";
   import RadioGroup from "./RadioGroup.svelte";
   import SwitchBox from "./SwitchBox.svelte";
@@ -12,17 +11,19 @@
     showControls: boolean;
     editMode: EditMode;
     selectMode: SelectMode;
+    changeNumberOfBalls: ((number: number) => void) | undefined;
   };
 
   let {
     showControls,
     editMode = $bindable(),
     selectMode = $bindable(),
+    changeNumberOfBalls,
   }: Props = $props();
 
   let numberMode = $state<"add" | "remove">("add");
   const changeBallNumber = (number: number) => {
-    // changeNumberOfBalls(number * (numberMode === "add" ? 1 : -1));
+    changeNumberOfBalls?.(number * (numberMode === "add" ? 1 : -1));
   };
 
   const onNumberModeChange = (value: "add" | "remove") => {
@@ -51,7 +52,11 @@
     <button id="change-5" onclick={() => changeBallNumber(5)}>5</button>
     <button id="change-10" onclick={() => changeBallNumber(10)}>10</button>
     <button id="change-20" onclick={() => changeBallNumber(20)}>20</button>
-    <button id="change-all">all</button>
+    {#if numberMode === "remove"}
+      <button id="change-all" onclick={() => changeBallNumber(10000)}
+        >all</button
+      >
+    {/if}
   </div>
 
   <p>Modes:</p>

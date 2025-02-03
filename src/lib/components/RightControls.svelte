@@ -68,7 +68,7 @@
   <SliderBox
     label={"bar thickness"}
     bind:value={barThickness}
-    min={0}
+    min={1}
     max={30}
     step={1}
   />
@@ -76,7 +76,7 @@
     label={"bounciness"}
     bind:value={bounciness}
     min={0}
-    max={2}
+    max={1.1}
     step={0.01}
   />
   <BackgroundPicker

@@ -15,24 +15,38 @@
   let ballColor = $state("#eee");
   let barColor = $state("rgb(0, 100, 255)");
   let background = $state("#000");
-  let gravity = $state(0.7);
+  let gravity = $state(0.08);
   let barThickness = $state(5);
-  let bounciness = $state(0);
+  let bounciness = $state(1);
 
   //left controls
   let editMode = $state<EditMode>("edit");
   let selectMode = $state<SelectMode>("position");
-
-  $effect(() => {
-    console.log(background);
-  });
+  let changeNumberOfBalls: ((number: number) => void) | undefined = $state();
 </script>
 
 <div class="container">
-  <div class="background" style={`background: ${background}`}></div>
+  <div class="background"></div>
   <p id="header" class="title">ball physics</p>
-  <!-- <P5CanvasContainer {fullScreen} /> -->
-  <LeftControls {showControls} {editMode} {selectMode} />
+  <P5CanvasContainer
+    {fullScreen}
+    {bounceOffEdges}
+    {editMode}
+    {selectMode}
+    {ballColor}
+    {barColor}
+    {background}
+    {gravity}
+    {barThickness}
+    {bounciness}
+    bind:changeNumberOfBalls
+  />
+  <LeftControls
+    {showControls}
+    bind:editMode
+    bind:selectMode
+    {changeNumberOfBalls}
+  />
   <RightControls
     {showControls}
     bind:fullScreen

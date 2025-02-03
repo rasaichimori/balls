@@ -1,31 +1,27 @@
 import { Ball } from "./balls";
 import { Segment } from "./segment";
-import type { EditMode, SelectMode } from "./types";
-import type { Position } from "./utils/geometry";
-import { constrain, distance, DoCirclesOverlap } from "./utils/math";
+import { distance, DoCirclesOverlap } from "./utils/math";
 
-export let gravity = 0.08;
+export function runSimulationStep(context: {
+  Allballs: Map<string, Ball>;
+  Allsegs: Map<string, Segment>;
+  gravity: number;
+  bounciness: number;
+  bounceOffEdges: boolean;
+  width: number;
+  height: number;
+}) {
+  const {
+    Allballs,
+    Allsegs,
+    gravity,
+    bounciness,
+    bounceOffEdges,
+    width,
+    height,
+  } = context;
 
-export let bounciness = 0.9;
-let bounceEdge = false;
-
-let userMadeCounter = 0;
-
-let width: number = 1000;
-let height: number = 1000;
-
-type Collision = {
-  ball1Id: string;
-  ball2Id: string;
-  fake: boolean;
-};
-
-export function runSimulationStep(
-  Allballs: { [key: string]: Ball },
-  Allsegs: { [key: string]: Segment }
-) {
-  var collisions: Collision[] = [];
-  var fakeBalls: { [key: string]: Ball } = {};
+  const fakeBalls: Map<string, Ball> = new Map();
 
   let nSimUdate = 4;
   const simElapsedTime = 1 / nSimUdate;
@@ -34,24 +30,21 @@ export function runSimulationStep(
 
   // main simulation loop
   for (let i = 0; i < nSimUdate; i++) {
-    for (const ballId in Allballs) {
-      const ball = Allballs[ballId];
+    for (const [id, ball] of Allballs) {
       if (
         isNaN(ball.x) ||
         isNaN(ball.y) ||
         Math.abs(ball.a.x) > 99999 ||
         Math.abs(ball.a.y) > 99999
       ) {
-        delete Allballs[ballId];
+        Allballs.delete(id);
       }
       ball.simTimeRemaining = simElapsedTime;
     }
 
     for (let j = 0; j < maxSimSteps; j++) {
       //updating positions
-      for (const ballId in Allballs) {
-        const ball = Allballs[ballId];
-
+      for (const [id, ball] of Allballs) {
         if (ball.simTimeRemaining > 0) {
           ball.o.x = ball.x;
           ball.o.y = ball.y;
@@ -63,7 +56,7 @@ export function runSimulationStep(
           ball.x += ball.velocityX * ball.simTimeRemaining;
           ball.y += ball.velocityY * ball.simTimeRemaining;
 
-          if (bounceEdge) {
+          if (bounceOffEdges) {
             if (ball.x < ball.radius) {
               ball.x = ball.radius;
               ball.velocityX *= -1;
@@ -97,12 +90,14 @@ export function runSimulationStep(
         }
       }
 
+      const collisions: {
+        ball1: Ball;
+        ball2: Ball;
+      }[] = [];
       // checking all collisions
-      for (const ballId in Allballs) {
-        const ball = Allballs[ballId];
+      for (const [id, ball] of Allballs) {
         //checking collisions with edges
-        for (const segId in Allsegs) {
-          let edge = Allsegs[segId];
+        for (const [id, edge] of Allsegs) {
           let LineX1 = edge.end.x - edge.start.x;
           let LineY1 = edge.end.y - edge.start.y;
 
@@ -126,7 +121,7 @@ export function runSimulationStep(
           );
 
           if (d <= ball.radius + edge.radius) {
-            const newId = `${fakeBalls.length}`;
+            const newId = `${fakeBalls.size}`;
             const fakeball = new Ball(
               closestPointX,
               closestPointY,
@@ -136,11 +131,10 @@ export function runSimulationStep(
               ball.mass * 0.8,
               newId
             );
-            fakeBalls[newId] = fakeball;
+            fakeBalls.set(newId, fakeball);
             collisions.push({
-              ball1Id: ball.id,
-              ball2Id: fakeball.id,
-              fake: true,
+              ball1: ball,
+              ball2: fakeball,
             });
 
             let Overlap = d - ball.radius - fakeball.radius;
@@ -150,8 +144,7 @@ export function runSimulationStep(
         }
 
         //checking collisions with other balls
-        for (const targetId in Allballs) {
-          const target = Allballs[targetId];
+        for (const [targetId, target] of Allballs) {
           if (ball.id != target.id) {
             if (DoCirclesOverlap(ball, target)) {
               let DistBetween = distance(ball, target);
@@ -162,9 +155,8 @@ export function runSimulationStep(
               target.y += (Overlap * (ball.y - target.y)) / DistBetween;
 
               collisions.push({
-                ball1Id: ball.id,
-                ball2Id: target.id,
-                fake: false,
+                ball1: ball,
+                ball2: target,
               });
             }
           }
@@ -182,12 +174,13 @@ export function runSimulationStep(
       }
 
       //dealing with collisions
-      collisions.forEach((collision) => {
-        const ball1 = Allballs[collision.ball1Id];
-        const ball2 = collision.fake
-          ? fakeBalls[collision.ball2Id]
-          : Allballs[collision.ball2Id];
+      for (const collision of collisions) {
+        const ball1 = collision.ball1;
+        const ball2 = collision.ball2;
 
+        if (ball1 === undefined || ball2 === undefined) {
+          continue;
+        }
         let d = distance(ball1, ball2);
         let nx = (ball2.x - ball1.x) / d;
         let ny = (ball2.y - ball1.y) / d;
@@ -209,162 +202,13 @@ export function runSimulationStep(
           (dpNorm2 * (ball2.mass - ball1.mass) + 2 * ball1.mass * dpNorm1) /
           (ball1.mass + ball2.mass);
 
-        Allballs[collision.ball1Id].velocityX = tx * dpTan1 + nx * m1;
-        Allballs[collision.ball1Id].velocityY = ty * dpTan1 + ny * m1;
+        collision.ball1.velocityX = tx * dpTan1 + nx * m1;
+        collision.ball1.velocityY = ty * dpTan1 + ny * m1;
 
-        if (collision.fake) {
-          fakeBalls[collision.ball2Id].velocityX = tx * dpTan2 + nx * m2;
-          fakeBalls[collision.ball2Id].velocityY = ty * dpTan2 + ny * m2;
-        } else {
-          Allballs[collision.ball2Id].velocityX = tx * dpTan2 + nx * m2;
-          Allballs[collision.ball2Id].velocityY = ty * dpTan2 + ny * m2;
-        }
-      });
-
-      collisions = [];
-      fakeBalls = {};
-    }
-  }
-}
-
-export function changeNumberOfBalls(
-  Allballs: { [key: string]: Ball },
-  numberOfBalls: number
-) {
-  if (numberOfBalls > 0) {
-    for (let i = 0; i < numberOfBalls; i++) {
-      let r = Math.random() * 5 + 5;
-      const newId = `random${userMadeCounter}`;
-      Allballs[newId] = new Ball(
-        Math.random() * width, //xposition
-        Math.random() * height, //yposition
-        (Math.random() - 0.5) * 2, //xspeed or velocity
-        (Math.random() - 0.5) * 2, //vypeed
-        r,
-        r * 50,
-        newId
-      );
-      userMadeCounter++;
-    }
-  } else {
-    for (let i = 0; i < numberOfBalls; i++) {
-      const id = Object.keys(Allballs)[0];
-      delete Allballs[id];
-    }
-  }
-}
-
-export function toggleFullScreen(
-  Allballs: { [key: string]: Ball },
-  Allsegs: { [key: string]: Segment },
-  fullScreen: boolean
-) {
-  if (fullScreen) {
-    for (const ballId in Allballs) {
-      const ball = Allballs[ballId];
-      ball.x += window.innerWidth / 2 - 500 / 2;
-      ball.y += window.innerHeight / 2 - 500 / 2;
-    }
-    for (const segId in Allsegs) {
-      const seg = Allsegs[segId];
-      seg.start.x += window.innerWidth / 2 - 500 / 2;
-      seg.end.x += window.innerWidth / 2 - 500 / 2;
-      seg.start.y += window.innerHeight / 2 - 500 / 2;
-      seg.end.y += window.innerHeight / 2 - 500 / 2;
-    }
-  } else {
-    for (const ballId in Allballs) {
-      const ball = Allballs[ballId];
-      ball.x -= window.innerWidth / 2 - 500 / 2;
-      ball.y -= window.innerHeight / 2 - 500 / 2;
-    }
-    for (const segId in Allsegs) {
-      const seg = Allsegs[segId];
-      seg.start.x -= window.innerWidth / 2 - 500 / 2;
-      seg.end.x -= window.innerWidth / 2 - 500 / 2;
-      seg.start.y -= window.innerHeight / 2 - 500 / 2;
-      seg.end.y -= window.innerHeight / 2 - 500 / 2;
-    }
-  }
-}
-
-export function removeAll(Allballs: { [key: string]: Ball }) {
-  Allballs = {};
-}
-
-let userAction: "addingBall" | "addingSeg" | undefined = undefined;
-
-export function checkUserAction(
-  Allballs: { [key: string]: Ball },
-  Allsegs: { [key: string]: Segment },
-  props: {
-    editMode: EditMode;
-    selectMode: SelectMode;
-    mouse: Position;
-    pressed: boolean;
-  }
-) {
-  const { editMode, selectMode, mouse, pressed } = props;
-  const mouseOverCanvas =
-    mouse.x > 0 && mouse.x < width && mouse.y > 0 && mouse.y < height;
-  if (pressed) {
-    if (editMode === "addBall") {
-      if (mouseOverCanvas) {
-        if (userAction === undefined) {
-          userMadeCounter++;
-          const newId = `user${userMadeCounter}`;
-          userAction = "addingBall";
-          Allballs[newId] = new Ball(
-            mouse.x, //xposition
-            mouse.y, //yposition
-            0, //xspeed or velocity
-            0, //vypeed
-            0,
-            0,
-            newId
-          );
-        } else {
-          const newId = `user${userMadeCounter}`;
-          Allballs[newId].velocityX = 0;
-          Allballs[newId].velocityY = 0;
-          Allballs[newId].radius = constrain(
-            distance(Allballs[newId], mouse),
-            0,
-            50
-          );
-          Allballs[newId].mass = Allballs[newId].radius * 50;
-        }
+        collision.ball2.velocityX = tx * dpTan2 + nx * m2;
+        collision.ball2.velocityY = ty * dpTan2 + ny * m2;
       }
+      fakeBalls.clear();
     }
-    if (editMode === "addSeg") {
-      if (mouseOverCanvas) {
-        if (!userAction) {
-          userMadeCounter++;
-          const newId = `seg${userMadeCounter}`;
-          userAction = "addingSeg";
-          Allsegs[newId] = new Segment(
-            mouse, //yposition
-            mouse, //vypeed
-            5,
-            newId
-          );
-        } else {
-          const newId = `seg${userMadeCounter}`;
-          Allsegs[newId].end = mouse;
-        }
-      }
-    }
-  } else {
-    userAction = undefined;
-    if (selectedBall != -1) {
-      if (selectMode === "velocity") {
-        Allballs[selectedBall].velocityX =
-          0.05 * (Allballs[selectedBall].x - mouse.x);
-        Allballs[selectedBall].velocityY =
-          0.05 * (Allballs[selectedBall].y - mouse.y);
-      }
-      selectedBall = -1;
-    }
-    selectedSeg = -1;
   }
 }
